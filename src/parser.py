@@ -31,8 +31,8 @@ class Parser:
             return None
 
 
-    def get_directions(self, year: int) -> dict[int, str]:
-        url = f"{self.base_url}?y={year}"
+    def get_directions(self, y: int) -> dict[int, str]:
+        url = f"{self.base_url}?y={y}"
         soup = self._get_soup(url=url)
 
         li_tag = soup.find('div', class_='filter').find_all('li')[3]
@@ -57,6 +57,61 @@ class Parser:
                     directions[direction_id] = option.get_text(strip=True)
 
         return directions
+
+    def get_groups(self, y: int, direction_id: int) -> dict[int, str]:
+        url = f"{self.base_url}?y={y}&up={direction_id}"
+        soup = self._get_soup(url=url)
+
+        filter_tag = soup.find('div', class_='filter')
+
+        li_tag = filter_tag.find_all('li')[5] if filter_tag else None
+
+        field = li_tag.find('b')
+
+        groups = {}
+
+        if field and field.text.lower().strip() == 'группа':
+            options = li_tag.find('div', class_='options').find_all('a', class_='option nowrap_ellipsis')
+
+            for option in options:
+                href = option.get('href')
+
+                if option.get_text(strip=True) in ('Все группы', "Не выбрано"):
+                    continue
+
+                if not href:
+                    continue
+
+                group_match = re.search(r"[?&]g=([^&]+)", href)
+
+                if group_match:
+                    group_id = int(group_match.group(1).split('=')[-1])
+                    groups[group_id] = option.get_text(strip=True)
+
+        return groups
+
+    def get_studs(self, y: int, direction_id: int, group_id: int) -> dict[int, str]:
+        url = f"{self.base_url}?y={y}&up={direction_id}&g={group_id}"
+        soup = self._get_soup(url=url)
+
+        studs = {}
+
+        body = soup.find('table').find('tbody')
+        for tr in body.find_all('tr'):
+            td = tr.find('td', class_='align_left')
+            a_tag = td.find('a')
+
+            if a_tag:
+                href = a_tag.get('href')
+                stud_id_match = re.search(r"[?&]stud=([^&]+)", href)
+
+                if stud_id_match:
+                    stud_id = int(stud_id_match.group(1).split('=')[-1])
+                    studs[stud_id] = a_tag.get_text(strip=True)
+
+        return studs
+
+            
 
     def get_direction_rating_table(self, y: int,
                                     direction_id: int,
@@ -218,7 +273,7 @@ class Parser:
 if __name__ == "__main__":
     parser = Parser()
 
-    dirs = parser.get_stud_rating(stud_id=638707)
+    dirs = parser.get_studs(y=2024, direction_id=13788, group_id=13707)
     print(dirs)
     
 
