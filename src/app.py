@@ -1,374 +1,344 @@
 from nicegui import ui
 
 from parser import Parser
+import dashboard
 
-
-# -------------------------------------------------------------------
-# Настройки
-# -------------------------------------------------------------------
-
-parser = Parser()
 
 COURSES = [1, 2, 3, 4, 5]
 ENTITIES = ['Студент', 'Группа', 'Направление']
 
 
-# -------------------------------------------------------------------
-# Вспомогательные функции
-# -------------------------------------------------------------------
-
 def get_year_by_course(course: int) -> int:
-    """Возвращает год поступления для выбранного курса."""
-    return 2026 - int(course) + 1
+    return 2026 - course + 1
 
 
-# -------------------------------------------------------------------
-# Направления
-# -------------------------------------------------------------------
+parser = Parser()
 
-def fill_directions(course_select, direction_select):
-    """Заполняет список направлений в зависимости от курса."""
 
-    def update_options():
-        selected_course = course_select.value
+def get_comparison_function(first_entity: str, second_entity: str):
+    functions = {
+        ('Студент', 'Студент'): dashboard.compare_student_student,
+        ('Группа', 'Группа'): dashboard.compare_group_group,
+        ('Направление', 'Направление'): dashboard.compare_direction_direction,
 
-        if selected_course is None:
-            direction_select.options = {}
-            direction_select.value = None
-            return
+        ('Студент', 'Группа'): dashboard.compare_student_group,
+        ('Группа', 'Студент'): dashboard.compare_student_group,
 
-        year = get_year_by_course(selected_course)
+        ('Студент', 'Направление'): dashboard.compare_student_direction,
+        ('Направление', 'Студент'): dashboard.compare_student_direction,
+
+        ('Группа', 'Направление'): dashboard.compare_group_direction,
+        ('Направление', 'Группа'): dashboard.compare_group_direction,
+    }
+
+    return functions.get((first_entity, second_entity))
+
+
+def get_rating_data(
+    entity: str,
+    course: int,
+    direction_id: int | None = None,
+    group_id: int | None = None,
+    student_id: int | None = None,
+):
+    year = get_year_by_course(course)
+
+    if entity == 'Студент':
+        return parser.get_stud_rating(student_id)
+
+    if entity == 'Группа':
+        df = parser.get_direction_rating_tables(
+            y=year,
+            direction_id=direction_id,
+        )
+
+        group_name = parser.get_groups(
+            y=year,
+            direction_id=direction_id,
+        )[group_id]
+
+        return df[df['Группа'] == group_name]
+
+    if entity == 'Направление':
+        return parser.get_direction_rating_tables(
+            y=year,
+            direction_id=direction_id,
+        )
+
+    return None
+
+
+@ui.page('/')
+def index():
+    """
+    Главная страница с выбором сущностей.
+    """
+
+    ui.label('Сравнение студентов').classes('text-2xl font-bold')
+
+    with ui.row().classes('w-full'):
+
+        # =========================
+        # Левая сущность
+        # =========================
+
+        with ui.column().classes('w-1/2'):
+            ui.label('Первая сущность')
+
+            first_course = ui.select(
+                COURSES,
+                label='Курс',
+                value=4,
+            ).classes('w-full')
+
+            first_entity = ui.select(
+                ENTITIES,
+                label='Тип сущности',
+                value='Студент',
+            ).classes('w-full')
+
+            first_direction = ui.select(
+                options={},
+                label='Направление',
+            ).classes('w-full')
+
+            first_group = ui.select(
+                options={},
+                label='Группа',
+            ).classes('w-full')
+
+            first_student = ui.select(
+                options={},
+                label='Студент',
+            ).classes('w-full')
+
+        # =========================
+        # Правая сущность
+        # =========================
+
+        with ui.column().classes('w-1/2'):
+            ui.label('Вторая сущность')
+
+            second_course = ui.select(
+                COURSES,
+                label='Курс',
+                value=4,
+            ).classes('w-full')
+
+            second_entity = ui.select(
+                ENTITIES,
+                label='Тип сущности',
+                value='Студент',
+            ).classes('w-full')
+
+            second_direction = ui.select(
+                options={},
+                label='Направление',
+            ).classes('w-full')
+
+            second_group = ui.select(
+                options={},
+                label='Группа',
+            ).classes('w-full')
+
+            second_student = ui.select(
+                options={},
+                label='Студент',
+            ).classes('w-full')
+
+    # =========================
+    # Заполнение направлений
+    # =========================
+
+    def update_first_directions():
+        year = get_year_by_course(first_course.value)
+
         directions = parser.get_directions(year)
 
-        options = {
-            str(direction_id): name
-            for direction_id, name in directions.items()
-        }
+        first_direction.options = directions
+        first_direction.value = None
+        first_direction.update()
 
-        direction_select.options = options
+    def update_second_directions():
+        year = get_year_by_course(second_course.value)
 
-        if options:
-            direction_select.value = next(iter(options))
-        else:
-            direction_select.value = None
+        directions = parser.get_directions(year)
 
-    course_select.on_value_change(update_options)
+        second_direction.options = directions
+        second_direction.value = None
+        second_direction.update()
 
-    update_options()
+    # =========================
+    # Группы
+    # =========================
 
-
-# -------------------------------------------------------------------
-# Группы
-# -------------------------------------------------------------------
-
-def fill_groups(course_select, direction_select, group_select):
-    """Заполняет список групп."""
-
-    def update_options():
-        selected_course = course_select.value
-        selected_direction = direction_select.value
-
-        if selected_course is None or selected_direction is None:
-            group_select.options = {}
-            group_select.value = None
+    def update_first_groups():
+        if first_direction.value is None:
             return
 
-        year = get_year_by_course(selected_course)
+        year = get_year_by_course(first_course.value)
 
         groups = parser.get_groups(
-            y=year,
-            direction_id=int(selected_direction),
+            year,
+            first_direction.value,
         )
 
-        options = {
-            str(group_id): name
-            for group_id, name in groups.items()
-        }
+        first_group.options = groups
+        first_group.value = None
+        first_group.update()
 
-        group_select.options = options
-
-        if options:
-            group_select.value = next(iter(options))
-        else:
-            group_select.value = None
-
-    course_select.on_value_change(update_options)
-    direction_select.on_value_change(update_options)
-
-    update_options()
-
-
-# -------------------------------------------------------------------
-# Студенты
-# -------------------------------------------------------------------
-
-def fill_students(
-    course_select,
-    direction_select,
-    group_select,
-    student_select,
-):
-    """Заполняет список студентов выбранной группы."""
-
-    def update_options():
-        selected_course = course_select.value
-        selected_direction = direction_select.value
-        selected_group = group_select.value
-
-        if (
-            selected_course is None
-            or selected_direction is None
-            or selected_group is None
-        ):
-            student_select.options = {}
-            student_select.value = None
+    def update_second_groups():
+        if second_direction.value is None:
             return
 
-        year = get_year_by_course(selected_course)
+        year = get_year_by_course(second_course.value)
+
+        groups = parser.get_groups(
+            year,
+            second_direction.value,
+        )
+
+        second_group.options = groups
+        second_group.value = None
+        second_group.update()
+
+    # =========================
+    # Студенты
+    # =========================
+
+    def update_first_students():
+        if first_direction.value is None or first_group.value is None:
+            return
+
+        year = get_year_by_course(first_course.value)
 
         students = parser.get_studs(
-            y=year,
-            direction_id=int(selected_direction),
-            group_id=int(selected_group),
+            year,
+            first_direction.value,
+            first_group.value,
         )
 
-        options = {
-            str(student_id): name
-            for student_id, name in students.items()
-        }
+        first_student.options = students
+        first_student.value = None
+        first_student.update()
 
-        student_select.options = options
+    def update_second_students():
+        if second_direction.value is None or second_group.value is None:
+            return
 
-        if options:
-            student_select.value = next(iter(options))
-        else:
-            student_select.value = None
+        year = get_year_by_course(second_course.value)
 
-    course_select.on_value_change(update_options)
-    direction_select.on_value_change(update_options)
-    group_select.on_value_change(update_options)
-
-    update_options()
-
-
-# -------------------------------------------------------------------
-# Отображение селекторов
-# -------------------------------------------------------------------
-
-def setup_entity_selector(
-    entity_select,
-    group_select,
-    student_select,
-):
-    """
-    Настраивает отображение группы и студента
-    в зависимости от выбранной сущности.
-    """
-
-    def update_visibility():
-        entity = entity_select.value
-
-        # -----------------------------------------------------------
-        # Студент
-        # -----------------------------------------------------------
-
-        if entity == 'Студент':
-            group_select.set_visibility(True)
-            student_select.set_visibility(True)
-
-        # -----------------------------------------------------------
-        # Группа
-        # -----------------------------------------------------------
-
-        elif entity == 'Группа':
-            group_select.set_visibility(True)
-            student_select.set_visibility(False)
-
-            student_select.value = None
-
-        # -----------------------------------------------------------
-        # Направление
-        # -----------------------------------------------------------
-
-        else:
-            group_select.set_visibility(False)
-            student_select.set_visibility(False)
-
-            group_select.value = None
-            student_select.value = None
-
-    entity_select.on_value_change(update_visibility)
-
-    # Начальное состояние
-    update_visibility()
-
-
-# -------------------------------------------------------------------
-# Основной интерфейс
-# -------------------------------------------------------------------
-
-with ui.column().style(
-    'min-height: 40vh; '
-    'margin-left: 32.5%; '
-    'justify-content: center; '
-    'align-items: center;'
-):
-
-    ui.label('Что ты выберешь?').classes(
-        'text-3xl font-bold mb-6'
-    )
-
-    with ui.row().classes(
-        'items-center justify-center gap-8'
-    ):
-
-        # ===========================================================
-        # Левая часть
-        # ===========================================================
-
-        with ui.column().classes('items-center'):
-
-            left_entity = ui.select(
-                ENTITIES,
-                label='Выбор сущности',
-                value='Студент',
-            ).classes('w-72 text-xl')
-
-            left_course = ui.select(
-                COURSES,
-                label='Курс',
-                value=1,
-            ).classes('w-40 mt-4 text-xl')
-
-            left_direction = ui.select(
-                {},
-                label='Направление',
-            ).classes('w-72 mt-4 text-xl')
-
-            left_group = ui.select(
-                {},
-                label='Группа',
-            ).classes('w-72 mt-4 text-xl')
-
-            left_student = ui.select(
-                {},
-                label='Студент',
-            ).classes('w-72 mt-4 text-xl')
-
-
-        # ===========================================================
-        # VS
-        # ===========================================================
-
-        ui.label('VS').classes(
-            'text-4xl font-bold text-primary'
+        students = parser.get_studs(
+            year,
+            second_direction.value,
+            second_group.value,
         )
 
+        second_student.options = students
+        second_student.value = None
+        second_student.update()
 
-        # ===========================================================
-        # Правая часть
-        # ===========================================================
+    # =========================
+    # Изменение типа сущности
+    # =========================
 
-        with ui.column().classes('items-center'):
+    def update_first_visibility():
+        entity = first_entity.value
 
-            right_entity = ui.select(
-                ENTITIES,
-                label='Выбор сущности',
-                value='Группа',
-            ).classes('w-72 text-xl')
+        first_direction.set_visibility(
+            entity in ('Студент', 'Группа', 'Направление')
+        )
 
-            right_course = ui.select(
-                COURSES,
-                label='Курс',
-                value=2,
-            ).classes('w-40 mt-4 text-xl')
+        first_group.set_visibility(
+            entity in ('Студент', 'Группа')
+        )
 
-            right_direction = ui.select(
-                {},
-                label='Направление',
-            ).classes('w-72 mt-4 text-xl')
+        first_student.set_visibility(
+            entity == 'Студент'
+        )
 
-            right_group = ui.select(
-                {},
-                label='Группа',
-            ).classes('w-72 mt-4 text-xl')
+    def update_second_visibility():
+        entity = second_entity.value
 
-            right_student = ui.select(
-                {},
-                label='Студент',
-            ).classes('w-72 mt-4 text-xl')
+        second_direction.set_visibility(
+            entity in ('Студент', 'Группа', 'Направление')
+        )
 
+        second_group.set_visibility(
+            entity in ('Студент', 'Группа')
+        )
 
-# -------------------------------------------------------------------
-# Заполнение направлений
-# -------------------------------------------------------------------
+        second_student.set_visibility(
+            entity == 'Студент'
+        )
 
-fill_directions(
-    left_course,
-    left_direction,
-)
+    first_entity.on_value_change(update_first_visibility)
+    second_entity.on_value_change(update_second_visibility)
 
-fill_directions(
-    right_course,
-    right_direction,
-)
+    first_course.on_value_change(update_first_directions)
+    second_course.on_value_change(update_second_directions)
 
+    first_direction.on_value_change(update_first_groups)
+    second_direction.on_value_change(update_second_groups)
 
-# -------------------------------------------------------------------
-# Заполнение групп
-# -------------------------------------------------------------------
+    first_group.on_value_change(update_first_students)
+    second_group.on_value_change(update_second_students)
 
-fill_groups(
-    left_course,
-    left_direction,
-    left_group,
-)
+    update_first_directions()
+    update_second_directions()
 
-fill_groups(
-    right_course,
-    right_direction,
-    right_group,
-)
+    update_first_visibility()
+    update_second_visibility()
 
+    # =========================
+    # Запуск анализа
+    # =========================
 
-# -------------------------------------------------------------------
-# Заполнение студентов
-# -------------------------------------------------------------------
+    def run_analysis():
 
-fill_students(
-    left_course,
-    left_direction,
-    left_group,
-    left_student,
-)
+        first_data = get_rating_data(
+            entity=first_entity.value,
+            course=first_course.value,
+            direction_id=first_direction.value,
+            group_id=first_group.value,
+            student_id=first_student.value,
+        )
 
-fill_students(
-    right_course,
-    right_direction,
-    right_group,
-    right_student,
-)
+        second_data = get_rating_data(
+            entity=second_entity.value,
+            course=second_course.value,
+            direction_id=second_direction.value,
+            group_id=second_group.value,
+            student_id=second_student.value,
+        )
 
+        compare_function = get_comparison_function(
+            first_entity.value,
+            second_entity.value,
+        )
 
-# -------------------------------------------------------------------
-# Настройка отображения
-# -------------------------------------------------------------------
+        if compare_function is None:
+            ui.notify(
+                'Такое сравнение пока не реализовано',
+                type='warning',
+            )
+            return
 
-setup_entity_selector(
-    left_entity,
-    left_group,
-    left_student,
-)
+        # Передаем данные dashboard
+        dashboard.set_dashboard_data(
+            first_entity=first_entity.value,
+            second_entity=second_entity.value,
+            first_data=first_data,
+            second_data=second_data,
+        )
 
-setup_entity_selector(
-    right_entity,
-    right_group,
-    right_student,
-)
+        # Переходим на страницу dashboard
+        ui.navigate.to('/dashboard')
 
+    ui.button(
+        'Запустить анализ',
+        on_click=run_analysis,
+    ).classes('mt-6')
 
-# -------------------------------------------------------------------
-# Запуск
-# -------------------------------------------------------------------
 
 ui.run()
