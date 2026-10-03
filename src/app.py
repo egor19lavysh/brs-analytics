@@ -57,7 +57,19 @@ def get_rating_data(
             direction_id=direction_id,
         )[group_id]
 
-        return df[df['Группа'] == group_name]
+        group_column = next(
+            (
+                column_index
+                for column_index, column_name in enumerate(df.columns)
+                if column_name == 'Группа'
+            ),
+            None,
+        )
+        if group_column is None:
+            raise KeyError('В таблице рейтинга отсутствует колонка «Группа»')
+
+        group_values = df.iloc[:, group_column]
+        return df.iloc[group_values.eq(group_name).to_numpy()]
 
     if entity == 'Направление':
         return parser.get_direction_rating_tables(

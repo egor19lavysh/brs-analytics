@@ -69,6 +69,15 @@ def compare_student_student(
                 second_name
             )
         )
+
+    plots.append(
+            plot_bars(
+                first_name,
+                second_name,
+                {first_name: first_data['Сумма баллов'].dropna().mean()},
+                {second_name: second_data['Сумма баллов'].dropna().mean()},
+            )
+        )
     
 
     return plots
@@ -80,7 +89,35 @@ def compare_group_group(
     first_name='Группа 1',
     second_name='Группа 2',
 ):
-    pass
+
+    plots = []
+
+    first_subjects = first_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
+    second_subjects = second_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
+
+    # 1. Столбчатая по предметам
+    plots.append(
+        plot_bars(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 2. Radar профилей
+    plots.append(
+        plot_radar(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 3. Dumbbell разрыва по предметам
+    plots.append(
+        plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 4. Box plot средних баллов студентов
+    first_stud_avg = first_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    second_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    plots.append(
+        plot_box(first_name, second_name, first_stud_avg, second_stud_avg)
+    )
+
+    return plots
 
 
 def compare_direction_direction(
@@ -89,7 +126,35 @@ def compare_direction_direction(
     first_name='Направление 1',
     second_name='Направление 2',
 ):
-    pass
+
+    plots = []
+
+    first_subjects = first_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
+    second_subjects = second_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
+
+    # 1. Столбчатая по предметам
+    plots.append(
+        plot_bars(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 2. Dumbbell разрыва
+    plots.append(
+        plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 3. Radar профилей
+    plots.append(
+        plot_radar(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 4. Гистограмма распределения средних баллов студентов
+    first_stud_avg = first_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    second_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    plots.append(
+        plot_histogram(first_name, second_name, first_stud_avg, second_stud_avg)
+    )
+
+    return plots
 
 
 def compare_student_group(
@@ -98,7 +163,46 @@ def compare_student_group(
     first_name='Студент',
     second_name='Группа',
 ):
-    pass
+
+    plots = []
+
+    first_subjects = (
+        first_data[['Предмет', 'Сумма баллов']]
+        .dropna(subset=['Сумма баллов'])
+        .groupby('Предмет')['Сумма баллов']
+        .mean()
+        .to_dict()
+    )
+
+    second_subjects = (
+        second_data.drop(columns=['Группа'], errors='ignore')
+        .mean(numeric_only=True)
+        .to_dict()
+    )
+
+    # 1. Dumbbell: студент vs средний балл группы по предметам
+    plots.append(
+        plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 2. Radar профиля студента и группы
+    plots.append(
+        plot_radar(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 3. Box plot: балл студента на фоне распределения студентов группы
+    student_scores = first_data['Сумма баллов'].dropna().tolist()
+    group_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    plots.append(
+        plot_box(first_name, second_name, student_scores, group_stud_avg)
+    )
+
+    # 4. Гистограмма: баллы студента vs средние баллы студентов группы
+    plots.append(
+        plot_histogram(first_name, second_name, student_scores, group_stud_avg)
+    )
+
+    return plots
 
 
 def compare_student_direction(
@@ -107,7 +211,46 @@ def compare_student_direction(
     first_name='Студент',
     second_name='Направление',
 ):
-    pass
+
+    plots = []
+
+    first_subjects = (
+        first_data[['Предмет', 'Сумма баллов']]
+        .dropna(subset=['Сумма баллов'])
+        .groupby('Предмет')['Сумма баллов']
+        .mean()
+        .to_dict()
+    )
+
+    second_subjects = (
+        second_data.drop(columns=['Группа'], errors='ignore')
+        .mean(numeric_only=True)
+        .to_dict()
+    )
+
+    # 1. Столбчатая: студент vs средние по направлению
+    plots.append(
+        plot_bars(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 2. Dumbbell разрыва по предметам
+    plots.append(
+        plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 3. Box plot: балл студента на фоне распределения по направлению
+    student_scores = first_data['Сумма баллов'].dropna().tolist()
+    direction_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    plots.append(
+        plot_box(first_name, second_name, student_scores, direction_stud_avg)
+    )
+
+    # 4. Гистограмма распределения
+    plots.append(
+        plot_histogram(first_name, second_name, student_scores, direction_stud_avg)
+    )
+
+    return plots
 
 
 def compare_group_direction(
@@ -116,7 +259,35 @@ def compare_group_direction(
     first_name='Группа',
     second_name='Направление',
 ):
-    pass
+
+    plots = []
+
+    first_subjects = first_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
+    second_subjects = second_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
+
+    # 1. Столбчатая по предметам
+    plots.append(
+        plot_bars(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 2. Dumbbell: где группа отрывается/отстаёт от направления
+    plots.append(
+        plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
+    )
+
+    # 3. Box plot средних баллов студентов группы vs направления
+    first_stud_avg = first_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    second_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
+    plots.append(
+        plot_box(first_name, second_name, first_stud_avg, second_stud_avg)
+    )
+
+    # 4. Гистограмма распределения средних баллов студентов
+    plots.append(
+        plot_histogram(first_name, second_name, first_stud_avg, second_stud_avg)
+    )
+
+    return plots
 
 # ============================================================
 # Dashboard

@@ -240,7 +240,7 @@ class Parser:
 
             record = {
                 'Семестр': current_semester,
-                'Предмет': subject_name,
+                'Предмет': subject_name.replace(' (Зачет)', '').replace(' (Экзамен)', '').replace(' (Дифференцированный зачет)', ''),
                 'Форма контроля': form_control,
                 'КТ 1': points[0],
                 'КТ 2': points[1],
