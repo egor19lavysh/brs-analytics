@@ -23,6 +23,37 @@ def set_dashboard_data(
         'second_data': second_data,
     }
 
+# ============================================================
+# Вспомогательные функции
+# ============================================================
+
+def _collect_subjects(first_data, second_data) -> list[str]:
+    """Все уникальные предметы из обоих датафреймов + опция 'Все предметы'."""
+    subjects = set()
+
+    for df in (first_data, second_data):
+        if 'Предмет' in df.columns:
+            subjects.update(df['Предмет'].dropna().unique().tolist())
+        else:
+            subjects.update(c for c in df.columns if c != 'Группа')
+
+    return ['Все предметы'] + sorted(subjects)
+
+
+def _filter_by_subject(df, subject: str):
+    """Фильтрует датафрейм по выбранному предмету (или возвращает как есть)."""
+    if subject == 'Все предметы':
+        return df
+
+    if 'Предмет' in df.columns:
+        return df[df['Предмет'] == subject]
+
+    # Широкий формат: оставляем столбец 'Группа' (если есть) + выбранный предмет
+    keep_cols = ['Группа'] if 'Группа' in df.columns else []
+    if subject in df.columns:
+        keep_cols.append(subject)
+
+    return df[keep_cols]
 
 # ============================================================
 # Функции сравнения
@@ -228,7 +259,6 @@ def compare_student_direction(
         .to_dict()
     )
 
-    # 1. Столбчатая: студент vs средние по направлению
     plots.append(
         plot_bars(first_name, second_name, first_subjects, second_subjects)
     )
@@ -303,7 +333,6 @@ def dashboard_page():
 
     first_entity = _dashboard_data['first_entity']
     second_entity = _dashboard_data['second_entity']
-
     first_data = _dashboard_data['first_data']
     second_data = _dashboard_data['second_data']
 
@@ -312,9 +341,8 @@ def dashboard_page():
     ).classes('text-2xl font-bold')
 
     # --------------------------------------------------------
-    # Выбираем функцию сравнения
+    # Выбор функции сравнения
     # --------------------------------------------------------
-
     functions = {
         ('Студент', 'Студент'): compare_student_student,
         ('Группа', 'Группа'): compare_group_group,
@@ -330,29 +358,50 @@ def dashboard_page():
         ('Направление', 'Группа'): compare_group_direction,
     }
 
-    compare_function = functions.get(
-        (first_entity, second_entity)
-    )
+    compare_function = functions.get((first_entity, second_entity))
 
     if compare_function is None:
-        ui.label(
-            'Для такого типа сравнения функция пока не реализована'
-        )
+        ui.label('Для такого типа сравнения функция пока не реализована')
         return
 
     # --------------------------------------------------------
-    # Строим график
+    # Селектор предметов + контейнер для графиков
     # --------------------------------------------------------
+    subjects = _collect_subjects(first_data, second_data)
 
-    figures = compare_function(
-        first_data,
-        second_data,
-        first_entity,
-        second_entity,
-    )
+    selected_subject = {'value': subjects[0]}  # по умолчанию 'Все предметы'
 
-    for figure in figures:
-        ui.plotly(figure).classes('w-full h-[600px]')
+    plots_container = ui.column().classes('w-full')
+
+    def rebuild_plots():
+        plots_container.clear()
+
+        filtered_first = _filter_by_subject(first_data, selected_subject['value'])
+        filtered_second = _filter_by_subject(second_data, selected_subject['value'])
+
+        with plots_container:
+            figures = compare_function(
+                filtered_first,
+                filtered_second,
+                first_entity,
+                second_entity,
+            )
+            for figure in figures:
+                ui.plotly(figure).classes('w-full h-[600px]')
+
+    ui.select(
+        options=subjects,
+        value=subjects[0],
+        label='Предмет',
+        with_input=True,
+        on_change=lambda e: (
+            selected_subject.update({'value': e.value}),
+            rebuild_plots(),
+        ),
+    ).classes('w-80')
+
+    # Первичная отрисовка
+    rebuild_plots()
 
     ui.button(
         '← Назад',
