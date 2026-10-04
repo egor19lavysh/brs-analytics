@@ -1,6 +1,7 @@
 from nicegui import ui
 
 from parser import Parser
+from redis_cache import RedisClient
 import dashboard
 
 
@@ -12,7 +13,7 @@ def get_year_by_course(course: int) -> int:
     return 2026 - course + 1
 
 
-parser = Parser()
+parser = Parser(cache=RedisClient())
 
 
 def get_comparison_function(first_entity: str, second_entity: str):
@@ -82,17 +83,11 @@ def get_rating_data(
 
 @ui.page('/')
 def index():
-    """
-    Главная страница с выбором сущностей.
-    """
 
-    ui.label('Сравнение студентов').classes('text-2xl font-bold')
+    ui.label('БРС.Аналитика').classes('text-2xl font-bold')
 
     with ui.row().classes('w-full'):
 
-        # =========================
-        # Левая сущность
-        # =========================
 
         with ui.column().classes('w-1/2'):
             ui.label('Первая сущность')
@@ -124,9 +119,7 @@ def index():
                 label='Студент',
             ).classes('w-full')
 
-        # =========================
         # Правая сущность
-        # =========================
 
         with ui.column().classes('w-1/2'):
             ui.label('Вторая сущность')
@@ -158,9 +151,7 @@ def index():
                 label='Студент',
             ).classes('w-full')
 
-    # =========================
     # Заполнение направлений
-    # =========================
 
     def update_first_directions():
         year = get_year_by_course(first_course.value)
@@ -180,9 +171,7 @@ def index():
         second_direction.value = None
         second_direction.update()
 
-    # =========================
     # Группы
-    # =========================
 
     def update_first_groups():
         if first_direction.value is None:
@@ -214,9 +203,7 @@ def index():
         second_group.value = None
         second_group.update()
 
-    # =========================
     # Студенты
-    # =========================
 
     def update_first_students():
         if first_direction.value is None or first_group.value is None:
@@ -250,9 +237,6 @@ def index():
         second_student.value = None
         second_student.update()
 
-    # =========================
-    # Изменение типа сущности
-    # =========================
 
     def update_first_visibility():
         entity = first_entity.value
@@ -302,9 +286,7 @@ def index():
     update_first_visibility()
     update_second_visibility()
 
-    # =========================
     # Запуск анализа
-    # =========================
 
     def run_analysis():
 
@@ -336,15 +318,35 @@ def index():
             )
             return
 
-        # Передаем данные dashboard
+        if first_entity.value == 'Студент':
+            first_ops = first_student.options
+            first_entity_id = first_student.value
+        elif first_entity.value == 'Направление':
+            first_ops = first_direction.options
+            first_entity_id = first_direction.value
+        elif first_entity.value == 'Группа':
+            first_ops = first_group.options
+            first_entity_id = first_group.value
+
+        if second_entity.value == 'Студент':
+            second_ops = second_student.options
+            second_entity_id = second_student.value
+        elif second_entity.value == 'Направление':
+            second_ops = second_direction.options
+            second_entity_id = second_direction.value
+        elif second_entity.value == 'Группа':
+            second_ops = second_group.options
+            second_entity_id = second_group.value
+
         dashboard.set_dashboard_data(
             first_entity=first_entity.value,
+            first_name=first_ops[first_entity_id] if first_entity_id is not None else str(first_entity.value),
             second_entity=second_entity.value,
+            second_name=second_ops[second_entity_id] if second_entity_id is not None else str(second_entity.value),
             first_data=first_data,
             second_data=second_data,
         )
 
-        # Переходим на страницу dashboard
         ui.navigate.to('/dashboard')
 
     ui.button(

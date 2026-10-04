@@ -4,16 +4,33 @@ from fake_useragent import UserAgent
 from datetime import date
 import pandas as pd
 import re
+import warnings
+from redis_cache import RedisClient
 
+
+STUDENT_RATING_COLUMNS = (
+    'Семестр',
+    'Предмет',
+    'Форма контроля',
+    'КТ 1',
+    'КТ 2',
+    'КТ 3',
+    'КТ 4',
+    'Баллы за экзамен',
+    'Сумма баллов',
+    'Оценка',
+)
 
 
 
 class Parser:
 
     def __init__(self,
-                 url: str = "https://rating.unecon.ru/"):
+                 url: str = "https://rating.unecon.ru/",
+                 cache: RedisClient | None = None):
         self.base_url = url
         self.ua = UserAgent()
+        self.cache = cache
 
     def _get_soup(self, url: str) -> BeautifulSoup | None:
         try:
@@ -31,8 +48,14 @@ class Parser:
             return None
 
 
+    
     def get_directions(self, y: int) -> dict[int, str]:
         url = f"{self.base_url}?y={y}"
+
+        if self.cache and (result := self.cache.get(url)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
+
         soup = self._get_soup(url=url)
 
         li_tag = soup.find('div', class_='filter').find_all('li')[3]
@@ -56,10 +79,19 @@ class Parser:
                     direction_id = int(direction_match.group(1).split('=')[-1])
                     directions[direction_id] = option.get_text(strip=True)
 
+        if self.cache:
+            self.cache.set(url, directions)
+
         return directions
 
+    
     def get_groups(self, y: int, direction_id: int) -> dict[int, str]:
         url = f"{self.base_url}?y={y}&up={direction_id}"
+
+        if self.cache and (result := self.cache.get(url)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
+        
         soup = self._get_soup(url=url)
 
         filter_tag = soup.find('div', class_='filter')
@@ -88,10 +120,19 @@ class Parser:
                     group_id = int(group_match.group(1).split('=')[-1])
                     groups[group_id] = option.get_text(strip=True)
 
+        if self.cache:
+            self.cache.set(url, groups)
+
         return groups
 
+    
     def get_studs(self, y: int, direction_id: int, group_id: int) -> dict[int, str]:
         url = f"{self.base_url}?y={y}&up={direction_id}&g={group_id}"
+
+        if self.cache and (result := self.cache.get(url)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
+                
         soup = self._get_soup(url=url)
 
         studs = {}
@@ -109,14 +150,71 @@ class Parser:
                     stud_id = int(stud_id_match.group(1).split('=')[-1])
                     studs[stud_id] = a_tag.get_text(strip=True)
 
+        if self.cache:
+            self.cache.set(url, studs)
+
         return studs
+
+    
+    def get_direction_name(self, direction_id: int) -> str | None:
+        url = f"{self.base_url}?up={direction_id}"
+
+        if self.cache and (result := self.cache.get(url)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
+                
+        soup = self._get_soup(url=url)
+
+        if soup is None:
+            return None
+
+        li_tag = soup.find('div', class_='filter').find_all('li')[3]
+
+        field = li_tag.find('b')
+
+        if field and field.text.lower().strip() == 'направление':
+            option = li_tag.find('div', class_='selected nowrap_ellipsis').find('div', class_='selected_text')
+
+            if option:
+                result = option.get_text(strip=True)
+
+                if self.cache:
+                    self.cache.set(url, result)
+
+                return result
+
+        return None
+
+    
+    def get_stud_name(self, stud_id: int) -> str | None:
+        url = f"{self.base_url}stud_cd.php?stud={stud_id}"
+
+        if self.cache and (result := self.cache.get(url)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
+                
+        soup = self._get_soup(url=url)
+
+        if soup is None:
+            return None
+
+        name = soup.find('h1').text
+
+        if self.cache:
+            self.cache.set(url, name)
+
+        return name
 
             
 
+    
     def get_direction_rating_table(self, y: int,
                                     direction_id: int,
                                     s: int = 1) -> pd.DataFrame:
         url = f"{self.base_url}?y={y}&up={direction_id}&s={s}"
+        if self.cache and (result := self.cache.get(url)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
         soup = self._get_soup(url=url)
 
         data={
@@ -141,9 +239,26 @@ class Parser:
         tbody = table.find('tbody')
 
         students = tbody.find_all('tr')
+        expected_cell_count = len(df.columns)
+        previous_group = None
 
-        for student in students:
+        for row_number, student in enumerate(students, start=1):
             row = [td.get_text(strip=True) for td in student.find_all('td')[1:]]
+            if len(row) == expected_cell_count - 1 and previous_group is not None:
+                row.insert(0, previous_group)
+
+            if len(row) != expected_cell_count:
+                warnings.warn(
+                    f"Rating row {row_number} has {len(row)} cells; "
+                    f"expected {expected_cell_count}. Adjusting row to match the table.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                row = row[:expected_cell_count]
+                row.extend([None] * (expected_cell_count - len(row)))
+
+            if row[0]:
+                previous_group = row[0]
             df.loc[len(df)] = row
 
         score_columns = df.columns[2:]
@@ -153,8 +268,12 @@ class Parser:
 
         df = df.set_index("Фамилия, имя, отчество")
 
+        if self.cache:
+            self.cache.set(url, df)
+
         return df
 
+    
     def get_direction_rating_tables(self, y: int, direction_id: int) -> pd.DataFrame:
 
         curr_year = date.today().year
@@ -213,7 +332,7 @@ class Parser:
             return match.group(1).strip()
         return text.strip()
 
-    def _parse_stud_rating_table(self, table) -> pd.DataFrame:
+    def _parse_stud_rating_table(self, url, table) -> pd.DataFrame:
         records = []
         current_semester = None
 
@@ -252,20 +371,32 @@ class Parser:
             }
             records.append(record)
 
-        return pd.DataFrame.from_records(records)
+        result = pd.DataFrame.from_records(records, columns=STUDENT_RATING_COLUMNS)
 
+        if self.cache:
+            self.cache.set(f"student-rating:{url}", result)
+
+        return result
+
+    
     def get_stud_rating(self, stud_id: int) -> pd.DataFrame:
         url = f"{self.base_url}stud_cd.php?stud={stud_id}"
+        cache_key = f"student-rating:{url}"
+
+        if self.cache and (result := self.cache.get(cache_key)) is not None:
+            print(f"Cache hit for URL: {url}")
+            return result
+        
         soup = self._get_soup(url=url)
 
         if soup is None:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=STUDENT_RATING_COLUMNS)
 
         table = soup.find('table', class_='stud_cds')
         if table is None:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=STUDENT_RATING_COLUMNS)
 
-        return self._parse_stud_rating_table(table)
+        return self._parse_stud_rating_table(url, table)
 
 
 
@@ -276,4 +407,3 @@ if __name__ == "__main__":
     dirs = parser.get_studs(y=2024, direction_id=13788, group_id=13707)
     print(dirs)
     
-

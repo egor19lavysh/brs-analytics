@@ -1,16 +1,19 @@
 from nicegui import ui
 import pandas as pd
 import numpy as np
+from app import parser
 from visual import *
 
 
-# Данные текущего анализа
+
 _dashboard_data = None
 
 
 def set_dashboard_data(
     first_entity,
+    first_name,
     second_entity,
+    second_name,
     first_data,
     second_data,
 ):
@@ -21,14 +24,13 @@ def set_dashboard_data(
         'second_entity': second_entity,
         'first_data': first_data,
         'second_data': second_data,
+        'first_name': first_name,
+        'second_name': second_name,
     }
 
-# ============================================================
 # Вспомогательные функции
-# ============================================================
 
 def _collect_subjects(first_data, second_data) -> list[str]:
-    """Все уникальные предметы из обоих датафреймов + опция 'Все предметы'."""
     subjects = set()
 
     for df in (first_data, second_data):
@@ -41,23 +43,20 @@ def _collect_subjects(first_data, second_data) -> list[str]:
 
 
 def _filter_by_subject(df, subject: str):
-    """Фильтрует датафрейм по выбранному предмету (или возвращает как есть)."""
     if subject == 'Все предметы':
         return df
 
     if 'Предмет' in df.columns:
         return df[df['Предмет'] == subject]
 
-    # Широкий формат: оставляем столбец 'Группа' (если есть) + выбранный предмет
+    #оставляем столбец группу (если есть) + выбранный предмет
     keep_cols = ['Группа'] if 'Группа' in df.columns else []
     if subject in df.columns:
         keep_cols.append(subject)
 
     return df[keep_cols]
 
-# ============================================================
 # Функции сравнения
-# ============================================================
 
 def compare_student_student(
     first_data,
@@ -102,11 +101,11 @@ def compare_student_student(
         )
 
     plots.append(
-            plot_bars(
+            plot_mean_score(
                 first_name,
                 second_name,
-                {first_name: first_data['Сумма баллов'].dropna().mean()},
-                {second_name: second_data['Сумма баллов'].dropna().mean()},
+                first_data['Сумма баллов'].dropna().mean(),
+                second_data['Сумма баллов'].dropna().mean(),
             )
         )
     
@@ -126,22 +125,22 @@ def compare_group_group(
     first_subjects = first_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
     second_subjects = second_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
 
-    # 1. Столбчатая по предметам
+    # Столбчатая по предметам
     plots.append(
         plot_bars(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 2. Radar профилей
+    # Radar профилей
     plots.append(
         plot_radar(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 3. Dumbbell разрыва по предметам
+    # Dumbbell разрыва по предметам
     plots.append(
         plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 4. Box plot средних баллов студентов
+    # Box plot средних баллов студентов
     first_stud_avg = first_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     second_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     plots.append(
@@ -163,22 +162,22 @@ def compare_direction_direction(
     first_subjects = first_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
     second_subjects = second_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
 
-    # 1. Столбчатая по предметам
+    # Столбчатая по предметам
     plots.append(
         plot_bars(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 2. Dumbbell разрыва
+    #  Dumbbell разрыва
     plots.append(
         plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 3. Radar профилей
+    # Radar профилей
     plots.append(
         plot_radar(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 4. Гистограмма распределения средних баллов студентов
+    # Гистограмма распределения средних баллов студентов
     first_stud_avg = first_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     second_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     plots.append(
@@ -211,24 +210,24 @@ def compare_student_group(
         .to_dict()
     )
 
-    # 1. Dumbbell: студент vs средний балл группы по предметам
+    # Dumbbell: студент vs средний балл группы по предметам
     plots.append(
         plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 2. Radar профиля студента и группы
+    # Radar профиля студента и группы
     plots.append(
         plot_radar(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 3. Box plot: балл студента на фоне распределения студентов группы
+    # Box plot: балл студента на фоне распределения студентов группы
     student_scores = first_data['Сумма баллов'].dropna().tolist()
     group_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     plots.append(
         plot_box(first_name, second_name, student_scores, group_stud_avg)
     )
 
-    # 4. Гистограмма: баллы студента vs средние баллы студентов группы
+    # Гистограмма: баллы студента vs средние баллы студентов группы
     plots.append(
         plot_histogram(first_name, second_name, student_scores, group_stud_avg)
     )
@@ -263,19 +262,19 @@ def compare_student_direction(
         plot_bars(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 2. Dumbbell разрыва по предметам
+    # Dumbbell разрыва по предметам
     plots.append(
         plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 3. Box plot: балл студента на фоне распределения по направлению
+    # Box plot: балл студента на фоне распределения по направлению
     student_scores = first_data['Сумма баллов'].dropna().tolist()
     direction_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     plots.append(
         plot_box(first_name, second_name, student_scores, direction_stud_avg)
     )
 
-    # 4. Гистограмма распределения
+    # Гистограмма распределения
     plots.append(
         plot_histogram(first_name, second_name, student_scores, direction_stud_avg)
     )
@@ -295,33 +294,29 @@ def compare_group_direction(
     first_subjects = first_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
     second_subjects = second_data.drop(columns=['Группа'], errors='ignore').mean(numeric_only=True).to_dict()
 
-    # 1. Столбчатая по предметам
+    # Столбчатая по предметам
     plots.append(
         plot_bars(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 2. Dumbbell: где группа отрывается/отстаёт от направления
+    # где группа отрывается/отстаёт от направления
     plots.append(
         plot_dumbbell(first_name, second_name, first_subjects, second_subjects)
     )
 
-    # 3. Box plot средних баллов студентов группы vs направления
+    # Box plot средних баллов студентов группы vs направления
     first_stud_avg = first_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     second_stud_avg = second_data.drop(columns=['Группа'], errors='ignore').mean(axis=1, numeric_only=True).tolist()
     plots.append(
         plot_box(first_name, second_name, first_stud_avg, second_stud_avg)
     )
 
-    # 4. Гистограмма распределения средних баллов студентов
+    # Гистограмма распределения средних баллов студентов
     plots.append(
         plot_histogram(first_name, second_name, first_stud_avg, second_stud_avg)
     )
 
     return plots
-
-# ============================================================
-# Dashboard
-# ============================================================
 
 @ui.page('/dashboard')
 def dashboard_page():
@@ -335,14 +330,19 @@ def dashboard_page():
     second_entity = _dashboard_data['second_entity']
     first_data = _dashboard_data['first_data']
     second_data = _dashboard_data['second_data']
+    first_name = _dashboard_data.get('first_name', '')
+    second_name = _dashboard_data.get('second_name', '')
+
+    print(_dashboard_data['first_data'])
+    print(_dashboard_data['second_data'])
+
+
 
     ui.label(
-        f'Сравнение: {first_entity} — {second_entity}'
+        f'Сравнение: {first_name} — {second_name}'
     ).classes('text-2xl font-bold')
 
-    # --------------------------------------------------------
     # Выбор функции сравнения
-    # --------------------------------------------------------
     functions = {
         ('Студент', 'Студент'): compare_student_student,
         ('Группа', 'Группа'): compare_group_group,
@@ -364,12 +364,10 @@ def dashboard_page():
         ui.label('Для такого типа сравнения функция пока не реализована')
         return
 
-    # --------------------------------------------------------
     # Селектор предметов + контейнер для графиков
-    # --------------------------------------------------------
     subjects = _collect_subjects(first_data, second_data)
 
-    selected_subject = {'value': subjects[0]}  # по умолчанию 'Все предметы'
+    selected_subject = {'value': subjects[0]}
 
     plots_container = ui.column().classes('w-full')
 
@@ -383,8 +381,8 @@ def dashboard_page():
             figures = compare_function(
                 filtered_first,
                 filtered_second,
-                first_entity,
-                second_entity,
+                first_name or first_entity,
+                second_name or second_entity,
             )
             for figure in figures:
                 ui.plotly(figure).classes('w-full h-[600px]')

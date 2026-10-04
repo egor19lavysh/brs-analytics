@@ -70,6 +70,27 @@ def plot_bars(
 
     return figure
 
+def plot_mean_score(first_name: str, second_name: str, first_mean: float, second_mean: float) -> go.Figure:
+    """Build a bar chart comparing the mean scores of two entities."""
+    figure = go.Figure()
+    figure.add_bar(
+        name=first_name,
+        x=[first_name],
+        y=[first_mean],
+    )
+    figure.add_bar(
+        name=second_name,
+        x=[second_name],
+        y=[second_mean],
+    )
+    figure.update_layout(
+        title="Сравнение среднего балла",
+        xaxis_title="Сущность",
+        yaxis_title="Средний балл",
+        barmode="group",
+    )
+    return figure
+
 def plot_horizontal_bar(
     values: dict[str, float],
     first_name: str,
