@@ -333,10 +333,6 @@ def dashboard_page():
     first_name = _dashboard_data.get('first_name', '')
     second_name = _dashboard_data.get('second_name', '')
 
-    print(_dashboard_data['first_data'])
-    print(_dashboard_data['second_data'])
-
-
 
     ui.label(
         f'Сравнение: {first_name} — {second_name}'
